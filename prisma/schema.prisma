@@ -1,0 +1,279 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id           Int           @id @default(autoincrement())
+  name         String
+  email        String        @unique
+  phone        String        @unique
+  passwordHash String
+  role         String        // "STUDENT", "TEACHER", "ADMIN"
+  className    String?       // "SSC", "HSC"
+  institution  String?
+  avatar       String?
+  status        String        @default("active") // "active", "suspended"
+  teacherStatus String?       // null = not applied, "PENDING" = awaiting approval, "APPROVED" = active teacher
+  bio           String?       // teacher bio/expertise description
+  createdAt     DateTime      @default(now())
+  
+  // Relations
+  coursesLed   Course[]      @relation("TeacherCourses")
+  enrollments  Enrollment[]
+  quizAttempts QuizAttempt[]
+  doubts       Doubt[]       @relation("StudentDoubts")
+  doubtAnswers DoubtAnswer[] @relation("UserAnswers")
+  certificates Certificate[]
+  orders       Order[]
+  reviews      Review[]
+}
+
+model Course {
+  id            Int          @id @default(autoincrement())
+  title         String
+  slug          String       @unique
+  description   String
+  classLevel    String       // "SSC", "HSC"
+  subject       String       // "Bangla"
+  paper         String       // "1st", "2nd"
+  type          String       // "RECORDED", "LIVE"
+  price         Float
+  discountPrice Float?
+  teacherId     Int
+  teacher       User         @relation("TeacherCourses", fields: [teacherId], references: [id])
+  status        String       @default("DRAFT") // "DRAFT", "PENDING", "PUBLISHED"
+  thumbnail     String?
+  promoVideoUrl String?
+  createdAt     DateTime     @default(now())
+  
+  // Relations
+  chapters      Chapter[]
+  enrollments   Enrollment[]
+  certificates  Certificate[]
+  quizzes       Quiz[]
+}
+
+model Chapter {
+  id       Int      @id @default(autoincrement())
+  courseId Int
+  course   Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title    String
+  order    Int
+  
+  // Relations
+  lessons  Lesson[]
+}
+
+model Lesson {
+  id            Int                  @id @default(autoincrement())
+  chapterId     Int
+  chapter       Chapter              @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  title         String
+  type          String               // "VIDEO", "LIVE", "PDF"
+  contentUrl    String
+  isFreePreview Boolean              @default(false)
+  order         Int
+  
+  // Relations
+  liveClasses   LiveClassSchedule[]
+  quizzes       Quiz[]
+  doubts        Doubt[]
+  progressions  LessonProgress[]
+}
+
+model LiveClassSchedule {
+  id           Int       @id @default(autoincrement())
+  lessonId     Int
+  lesson       Lesson    @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  startTime    DateTime
+  endTime      DateTime
+  joinUrl      String
+  recordingUrl String?
+}
+
+model Enrollment {
+  id              Int      @id @default(autoincrement())
+  studentId       Int
+  student         User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  courseId        Int
+  course          Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  enrolledAt      DateTime @default(now())
+  progressPercent Float    @default(0)
+  status          String   @default("active") // "active", "completed"
+  payments        Payment[]
+  deviceId        String?
+}
+
+model LessonProgress {
+  id          Int      @id @default(autoincrement())
+  studentId   Int
+  lessonId    Int
+  lesson      Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  completedAt DateTime @default(now())
+
+  @@unique([studentId, lessonId])
+}
+
+model Quiz {
+  id        Int       @id @default(autoincrement())
+  lessonId  Int?
+  lesson    Lesson?   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  courseId  Int?
+  course    Course?   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title     String
+  type      String    // "PRACTICE", "MODEL_TEST"
+  timeLimit Int       @default(0) // in minutes, 0 means no limit
+  
+  externalUrl String?   // For external quiz links e.g. Google Forms
+  
+  // Relations
+  questions Question[]
+  attempts  QuizAttempt[]
+}
+
+model Question {
+  id            Int      @id @default(autoincrement())
+  quizId        Int
+  quiz          Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  text          String
+  imageUrl      String?
+  optionsJson   String   // JSON string of options array: ["A", "B", "C", "D"]
+  correctOption Int      // Index 0 to 3
+  explanation   String?
+  marks         Float    @default(1.0)
+}
+
+model QuizAttempt {
+  id          Int      @id @default(autoincrement())
+  studentId   Int
+  student     User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  quizId      Int
+  quiz        Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  score       Float
+  answersJson String   // JSON string mapping question ID to selected option index
+  attemptedAt DateTime @default(now())
+}
+
+model Doubt {
+  id           Int           @id @default(autoincrement())
+  studentId    Int
+  student      User          @relation("StudentDoubts", fields: [studentId], references: [id], onDelete: Cascade)
+  lessonId     Int
+  lesson       Lesson        @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  questionText String
+  imageUrl     String?
+  status       String        @default("OPEN") // "OPEN", "ANSWERED"
+  createdAt    DateTime      @default(now())
+  
+  // Relations
+  answers      DoubtAnswer[]
+}
+
+model DoubtAnswer {
+  id           Int      @id @default(autoincrement())
+  doubtId      Int
+  doubt        Doubt    @relation(fields: [doubtId], references: [id], onDelete: Cascade)
+  answeredById Int
+  answeredBy   User     @relation("UserAnswers", fields: [answeredById], references: [id], onDelete: Cascade)
+  answerText   String
+  answeredAt   DateTime @default(now())
+}
+
+model Certificate {
+  id               Int      @id @default(autoincrement())
+  studentId        Int
+  student          User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  courseId         Int
+  course           Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  verificationCode String   @unique
+  issuedAt         DateTime @default(now())
+  pdfUrl           String?
+}
+
+model Product {
+  id             Int         @id @default(autoincrement())
+  title          String
+  slug           String      @unique
+  description    String
+  author         String
+  category       String      // e.g. "SSC", "HSC", "Guide", "Literature"
+  price          Float
+  discountPrice  Float?
+  stockQty       Int
+  type           String      // "PHYSICAL", "DIGITAL"
+  imagesJson     String      // JSON string of images array
+  digitalFileUrl String?
+  
+  // Relations
+  orderItems     OrderItem[]
+}
+
+model Order {
+  id            Int         @id @default(autoincrement())
+  userId        Int
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  totalAmount   Float
+  paymentMethod String      // "COD", "BKASH", "NAGAD", "ROCKET", "CARD"
+  paymentStatus String      @default("PENDING") // "PENDING", "PAID", "REFUNDED"
+  orderStatus   String      @default("PENDING") // "PENDING", "CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED", "CANCELLED"
+  shippingName  String
+  shippingPhone String
+  shippingAddr  String
+  couponCode    String?
+  createdAt     DateTime    @default(now())
+  
+  // Relations
+  items         OrderItem[]
+  payments      Payment[]
+}
+
+model OrderItem {
+  id        Int     @id @default(autoincrement())
+  orderId   Int
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId Int
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  quantity  Int
+  unitPrice Float
+}
+
+model Coupon {
+  id            Int      @id @default(autoincrement())
+  code          String   @unique
+  discountType  String   // "PERCENTAGE", "FIXED"
+  discountValue Float
+  appliesTo     String   // "COURSE", "STORE", "BOTH"
+  usageLimit    Int      @default(100)
+  expiryDate    DateTime
+}
+
+model Review {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  targetType String   // "COURSE", "PRODUCT"
+  targetId   Int
+  rating     Int      // 1 to 5
+  comment    String?
+  createdAt  DateTime @default(now())
+}
+
+model Payment {
+  id           Int         @id @default(autoincrement())
+  orderId      Int?
+  order        Order?      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  enrollmentId Int?
+  enrollment   Enrollment? @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  gateway      String
+  gatewayTxnId String
+  amount       Float
+  status       String
+  createdAt    DateTime    @default(now())
+}
